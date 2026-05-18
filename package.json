@@ -1,0 +1,18 @@
+{
+  "name": "cab-booking-platform",
+  "version": "1.0.0",
+  "description": "Microservices cab booking platform",
+  "scripts": {
+    "start:gateway": "cd gateway && npm start",
+    "start:customer": "cd services/customer && npm start",
+    "start:booking": "cd services/booking && npm start",
+    "start:payment": "cd services/payment && npm start",
+    "start:fare": "cd services/fare-estimation && npm start",
+    "start:location": "cd services/location && npm start",
+    "start:all": "concurrently \"npm run start:gateway\" \"npm run start:customer\" \"npm run start:booking\" \"npm run start:payment\" \"npm run start:fare\" \"npm run start:location\"",
+    "install:all": "cd gateway && npm install && cd ../services/customer && npm install && cd ../booking && npm install && cd ../payment && npm install && cd ../fare-estimation && npm install && cd ../location && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
