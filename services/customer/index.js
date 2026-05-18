@@ -92,4 +92,12 @@ app.get("/account", authenticate, async (req, res) => {
     }
 });
 
+// Internal routes
+app.post("/internal/booking-complete"), async (req, res) => {
+    // Temp
+    res.json({
+        bookingCount : 3
+    })
+}
+
 app.listen(PORT, () => console.log(`[Customer] Service is running on port ${PORT}`))

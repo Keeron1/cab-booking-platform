@@ -9,13 +9,11 @@ const bookingSchema = new mongoose.Schema({
     cabType: { type: String, enum: ["Economic", "Premium", "Executive"], required: true },
     status: {
       type: String,
-      enum: ["PENDING", "CONFIRMED", "DRIVER_ASSIGNED", "COMPLETED", "CANCELLED"],
-      default: "PENDING",
+      enum: ["CONFIRMED", "DRIVER_ASSIGNED", "IN_PROGRESS", "COMPLETED", "CANCELLED"],
+      default: "CONFIRMED",
     },
     estimatedFare: { type: Number, default: 0 }, // from fare estimation service
-    totalPrice: { type: Number, default: 0 }, // final price after all multipliers
-    isPaid: { type: Boolean, default: false },
-    rideReadyNotificationSent: { type: Boolean, default: false },
+    totalPrice: { type: Number, default: 0 } // final price after all multipliers
   },
   { timestamps: true }
 )
