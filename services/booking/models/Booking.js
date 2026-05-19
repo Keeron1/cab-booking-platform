@@ -10,13 +10,14 @@ const bookingSchema = new mongoose.Schema({
     status: {
       type: String,
       enum: [
-        "CONFIRMED", 
-        "DRIVER_ASSIGNED", 
-        "IN_PROGRESS", 
-        "COMPLETED", 
+        "PAYING",
+        "CONFIRMED",
+        "DRIVER_ASSIGNED",
+        "IN_PROGRESS",
+        "COMPLETED",
         "CANCELLED"
       ],
-      default: "CONFIRMED",
+      default: "PAYING",
     },
     estimatedFare: { type: Number, default: 0 }, // from fare estimation service
     totalPrice: { type: Number, default: 0 } // final price after all multipliers

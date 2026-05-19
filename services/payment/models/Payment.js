@@ -11,12 +11,7 @@ const paymentSchema = new mongoose.Schema({
     discountMultiplier: { type: Number, required: false, default: 1 },
 
     totalPrice: { type: Number, required: true },
-    discountApplied:{ type: Boolean, default: false },
-    status: {
-      type: String,
-      enum: ["PENDING", "COMPLETED", "FAILED"],
-      default: "COMPLETED",
-    },
+    discountApplied:{ type: Boolean, default: false }
   },
   { timestamps: true }
 )

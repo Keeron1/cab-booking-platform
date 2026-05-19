@@ -62,7 +62,7 @@ mongoose
 // Routes
 
 // Create booking
-app.post("/bookings", authenticate, async (req, res) => {
+app.post("/internal/booking", authenticate, async (req, res) => {
     try {
         const {
             startLocation,
@@ -80,12 +80,6 @@ app.post("/bookings", authenticate, async (req, res) => {
 
         const userId = req.user.id
 
-
-        // ------ Estimate and process payment
-        // OR Create booking from payment service after the user pays
-
-        // Create booking and confirm it
-        // Task 2
         const booking = await Booking.create({
             userId: userId,
             startLocation,
@@ -93,33 +87,43 @@ app.post("/bookings", authenticate, async (req, res) => {
             bookingTime: new Date(dateTime),
             passengers,
             cabType,
-            status: "CONFIRMED",
         })
 
-        // Task 6 - (event-driven func) 
-        // Notify the user that the cab is ready for pickup
-        scheduleRideReadyNotification(booking)
-
-        // After user clicks Ride then set booking status to IN_PROGRESS
-
-        // Task 5 - (event-driven func) IS THIS HERE OR AFTER THE BOOKING IS COMPLETE?
-        // Increment booking count
-        const bookingCount = await setBookingComplete(userId, booking._id)
-        console.log(`[Booking] User ${userId} now has ${bookingCount} bookings`)
-
-        res.status(201).json({ message: "Booking confirmed", booking })
+        res.status(201).json({ message: "Booking pending payment", booking })
     } catch (err) {
         console.error(err)
         res.status(500).json({ error: "Server error" })
     }
 })
 
-// View current bookings
+// Confirm a booking once payment succeeds (called by payment service)
+app.post("/internal/bookings/:id/confirm", authenticate, async (req, res) => {
+    try {
+        const booking = await Booking.findOneAndUpdate(
+            { _id: req.params.id, status: "PAYING" },
+            { $set: { status: "CONFIRMED" } },
+            { new: true }
+        )
+
+        if (!booking)
+            return res.status(404).json({ error: "Booking not found or not in PAYING state" })
+
+        // Task 6 - schedule the ride-ready notification 3 minutes from confirmation
+        scheduleRideReadyNotification(booking)
+
+        res.json({ message: "Booking confirmed", booking })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({ error: "Server error" })
+    }
+})
+
+// View current bookings 
 app.get("/bookings/current", authenticate, async (req, res) => {
     try {
         const bookings = await Booking.find({
             userId: req.user.id,
-            status: { $in: ["CONFIRMED", "DRIVER_ASSIGNED", "IN_PROGRESS"] },
+            status: { $in: ["PAYING", "CONFIRMED", "DRIVER_ASSIGNED", "IN_PROGRESS"] },
         }).sort({ bookingTime: 1 }) // 1 = ascending / -1 = descending
 
         res.json({ bookings })
