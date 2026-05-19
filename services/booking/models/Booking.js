@@ -9,7 +9,13 @@ const bookingSchema = new mongoose.Schema({
     cabType: { type: String, enum: ["Economic", "Premium", "Executive"], required: true },
     status: {
       type: String,
-      enum: ["CONFIRMED", "DRIVER_ASSIGNED", "IN_PROGRESS", "COMPLETED", "CANCELLED"],
+      enum: [
+        "CONFIRMED", 
+        "DRIVER_ASSIGNED", 
+        "IN_PROGRESS", 
+        "COMPLETED", 
+        "CANCELLED"
+      ],
       default: "CONFIRMED",
     },
     estimatedFare: { type: Number, default: 0 }, // from fare estimation service

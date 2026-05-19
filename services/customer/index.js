@@ -5,7 +5,7 @@ const mongoose = require("mongoose")
 const jwt = require("jsonwebtoken")
 
 const { User, Notification } = require("./models/index")
-const { authenticate } = require('./middleware');
+const { authenticate } = require('./middleware')
 
 const PORT = process.env.PORT || 3001
 
@@ -73,13 +73,13 @@ app.post("/auth/login", async (req, res) => {
         res.json({
             message: "Login successful",
             token,
-            user: { id: user._id, firstName: user.firstName, surname: user.surname, email: user.email },
+            user: { id: user._id, firstName: user.firstName, lastName: user.lastName, email: user.email },
         })
     } catch (err) {
         console.error(err)
         res.status(500).json({ error: "Server error" })
     }
-});
+})
 
 app.get("/account", authenticate, async (req, res) => {
     try {
@@ -90,14 +90,17 @@ app.get("/account", authenticate, async (req, res) => {
         console.error(err)
         res.status(500).json({ error: "Server error" })
     }
-});
+})
 
 // Internal routes
-app.post("/internal/booking-complete"), async (req, res) => {
+app.post("/internal/booking-complete", async (req, res) => {
     // Temp
     res.json({
         bookingCount : 3
     })
-}
+
+    // Get booking count
+    // if == 3 then send notif
+})
 
 app.listen(PORT, () => console.log(`[Customer] Service is running on port ${PORT}`))
