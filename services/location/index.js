@@ -29,33 +29,40 @@ async function getWeatherForecast({ lat, lng, address }) {
         return { error: "Failed to build query (lat and lng, or address are required)" }
 
     try {
-        const { data } = await axios.get(`${process.env.WEATHER_API_URL}/forecast.json`, {
+        const { data } = await axios.get(`${process.env.RAPID_API_FORECAST_HOST}/forecast.json`, {
             params: { q, days: 1 },
             headers: {
                 "X-RapidAPI-Key": process.env.RAPID_API_KEY,
-                "X-RapidAPI-Host": new URL(process.env.RAPID_API_HOST),
+                "X-RapidAPI-Host": new URL(process.env.RAPID_API_FORECAST_HOST),
             },
         })
 
+
+        const weatherLocation = data.location
+        const currentWeather = data.current
+        const forecastDay = data.forecast?.forecastday?.[0].day    
+        if(!forecastDay || !currentWeather || forecastDay){
+            return { error: "Failed to build response" }
+        }
+
         return {
             location: {
-                name: data.location?.name,
-                region: data.location?.region,
-                country: data.location?.country,
-                localtime: data.location?.localtime,
+                name: weatherLocation?.name,
+                region: weatherLocation?.region,
+                country: weatherLocation?.country,
+                localtime: weatherLocation?.localtime,
             },
             current: {
-                tempC: data.current?.temp_c,
-                condition: data.current?.condition?.text,
-                icon: data.current?.condition?.icon,
-                windKph: data.current?.wind_kph,
-                humidity: data.current?.humidity,
+                tempC: currentWeather?.temp_c,
+                condition: currentWeather?.condition?.text,
+                windKph: currentWeather?.wind_kph,
+                humidity: currentWeather?.humidity,
             },
-            forecastDay: data.forecast?.forecastday?.[0]?.day && {
-                maxTempC: data.forecast.forecastday[0].day.maxtemp_c,
-                minTempC: data.forecast.forecastday[0].day.mintemp_c,
-                condition: data.forecast.forecastday[0].day.condition?.text,
-                chanceOfRain: data.forecast.forecastday[0].day.daily_chance_of_rain,
+            forecastDay: {
+                maxTempC: forecastDay.maxtemp_c,
+                minTempC: forecastDay.mintemp_c,
+                condition: forecastDay.condition?.text,
+                chanceOfRain: forecastDay.daily_chance_of_rain,
             },
         }
     } catch (err) {

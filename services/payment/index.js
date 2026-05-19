@@ -43,6 +43,7 @@ function getPassengersMultiplier(passengers) {
 }
 
 async function getCabFare() {
+    // send internal request
     return 10
 }
 
