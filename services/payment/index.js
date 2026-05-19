@@ -46,33 +46,59 @@ async function getCabFare() {
     return 10
 }
 
+async function computeMultipliers({ cabType, dateTime, passengers, startLocation, endLocation }) {
+    const cabMultiplier = getCabMultiplier(cabType)
+    if (cabMultiplier === null) return { error: "Invalid cab type" }
+
+    const passengersMultiplier = getPassengersMultiplier(passengers)
+    if (passengersMultiplier === null) return { error: "Maximum 8 passengers allowed" }
+
+    const daytimeMultiplier = getDaytimeMultiplier(dateTime)
+    const baseFare = await getCabFare(startLocation, endLocation)
+
+    return { baseFare, cabMultiplier, daytimeMultiplier, passengersMultiplier }
+}
+
+function calculateTotal({ baseFare, cabMultiplier, daytimeMultiplier, passengersMultiplier, discountMultiplier }) {
+    return baseFare * cabMultiplier * daytimeMultiplier * passengersMultiplier * discountMultiplier
+}
+
 // Routes
 
-// Pay for a booking
-app.post("/pay", authenticate, async (req, res) => {
+// Get a booking price quote
+app.post("/quote", authenticate, async (req, res) => {
     try {
-        const {
-            cabType,
-            dateTime,
-            passengers,
-            startLocation,
-            endLocation
-        } = req.body
+        const { cabType, dateTime, passengers, startLocation, endLocation } = req.body
 
         if (!cabType || !dateTime || !passengers || !startLocation || !endLocation)
             return res.status(400).json({ error: "cabType, dateTime, passengers, startLocation and endLocation are required" })
 
-        const cabMultiplier = getCabMultiplier(cabType)
-        if (cabMultiplier === null)
-            return res.status(400).json({ error: "Invalid cab type" })
+        const multipliers = await computeMultipliers({ cabType, dateTime, passengers, startLocation, endLocation })
+        if (multipliers.error) return res.status(400).json({ error: multipliers.error })
 
-        const passengersMultiplier = getPassengersMultiplier(passengers)
-        if (passengersMultiplier === null)
-            return res.status(400).json({ error: "Maximum 8 passengers allowed" })
+        const discountAvailable = !!(await DiscountNotification.findOne({ userId: req.user.id, usedAt: null }))
+        
+        const discountMultiplier = discountAvailable ? 0.85 : 1
 
-        const daytimeMultiplier = getDaytimeMultiplier(dateTime)
+        const totalPrice = calculateTotal({ ...multipliers, discountMultiplier })
 
-        const baseFare = await getCabFare(startLocation, endLocation)
+        res.json({ quote: { ...multipliers, discountMultiplier, discountAvailable, totalPrice } })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({ error: "Server error" })
+    }
+})
+
+// Pay for a booking
+app.post("/pay", authenticate, async (req, res) => {
+    try {
+        const { cabType, dateTime, passengers, startLocation, endLocation } = req.body
+
+        if (!cabType || !dateTime || !passengers || !startLocation || !endLocation)
+            return res.status(400).json({ error: "cabType, dateTime, passengers, startLocation and endLocation are required" })
+
+        const multipliers = await computeMultipliers({ cabType, dateTime, passengers, startLocation, endLocation })
+        if (multipliers.error) return res.status(400).json({ error: multipliers.error })
 
         // Request to create the booking so we can store its id in the payment record
         let booking
@@ -93,7 +119,7 @@ app.post("/pay", authenticate, async (req, res) => {
             return res.status(502).json({ error: "Could not create booking" })
         }
 
-        // Claim discount if available
+        // Atomically claim discount if available
         const discountRecord = await DiscountNotification.findOneAndUpdate(
             { userId: req.user.id, usedAt: null },
             { $set: { usedAt: new Date() } },
@@ -102,25 +128,17 @@ app.post("/pay", authenticate, async (req, res) => {
         const discountMultiplier = discountRecord ? 0.85 : 1 // 15% off
         const discountApplied = !!discountRecord
 
-        // Calculate total fare cost
-        const totalPrice =
-            baseFare *
-            cabMultiplier *
-            daytimeMultiplier *
-            passengersMultiplier *
-            discountMultiplier
+        const totalPrice = calculateTotal({ ...multipliers, discountMultiplier })
 
-        // Create payment record
         const payment = await Payment.create({
             userId: req.user.id,
             bookingId: booking._id,
-            baseFare,
-            cabMultiplier,
-            daytimeMultiplier,
-            passengersMultiplier,
-            discountMultiplier,
+            baseFare: multipliers.baseFare,
+            cabMultiplier: multipliers.cabMultiplier,
+            daytimeMultiplier: multipliers.daytimeMultiplier,
+            discountMultiplier: discountMultiplier,
             totalPrice,
-            discountApplied
+            discountApplied,
         })
 
         // Change booking status to CONFIRMED
