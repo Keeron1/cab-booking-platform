@@ -10,6 +10,7 @@ const { authenticate } = require('./middleware')
 
 const PORT = process.env.PORT || 3002
 const CUSTOMER_SERVICE_URL = process.env.CUSTOMER_SERVICE_URL
+const PAYMENT_SERVICE_URL = process.env.PAYMENT_SERVICE_URL
 
 const app = express()
 app.use(cors())
@@ -17,40 +18,63 @@ app.use(express.json())
 
 async function scheduleRideReadyNotification(booking) {
     // Set booking status to DRIVER_ASSIGNED
-    await Booking.findByIdAndUpdate(booking._id, {
-        status: "DRIVER_ASSIGNED"
-    })
+    await Booking.findByIdAndUpdate(booking._id, { status: "DRIVER_ASSIGNED" })
 
     setTimeout(async () => {
         try {
-            // Send notification that the ride is ready
-            // notification that contains the details of the requested ride in the user microservice
-            const { data } = await axios.post(`${CUSTOMER_SERVICE_URL}/internal/notify-ride-ready`, { NOTIF_DATA })
-
-            await Booking.findByIdAndUpdate(booking._id, {
-                status: "IN_PROGRESS"
+            // Push the ride-ready notification to the user's inbox
+            await axios.post(`${CUSTOMER_SERVICE_URL}/internal/notifications`, {
+                userId: booking.userId,
+                type: "RIDE_READY",
+                title: "Your cab is ready for pickup",
+                message: `Your ${booking.cabType} cab is on its way.`,
+                meta: {
+                    bookingId: booking._id,
+                    cabType: booking.cabType,
+                    passengers: booking.passengers,
+                    startLocation: booking.startLocation,
+                    endLocation: booking.endLocation,
+                    bookingTime: booking.bookingTime,
+                },
             })
 
+            await Booking.findByIdAndUpdate(booking._id, { status: "IN_PROGRESS" })
         } catch (err) {
-        console.error("[Booking] Failed to send ride-ready notification:", err.message)
+            console.error("[Booking] Failed to send ride-ready notification:", err.message)
         }
     }, 3 * 60 * 1000); // 3 minutes
 }
 
-async function setBookingComplete(userId, bookingId) {
-    try {
-        // Set booking status to COMPLETED
-        await Booking.findByIdAndUpdate(bookingId, {
-            status: "COMPLETED"
-        })
+async function setBookingComplete(bookingId) {
+    const booking = await Booking.findOneAndUpdate(
+        { _id: bookingId, status: { $in: ["IN_PROGRESS", "DRIVER_ASSIGNED", "CONFIRMED"] } },
+        { $set: { status: "COMPLETED" } },
+        { new: true }
+    )
+    if (!booking) return null
 
-        // Increments booking count
-        const { data } = await axios.post(`${CUSTOMER_SERVICE_URL}/internal/booking-complete`, { userId })
-        return data.bookingCount;
+    let bookingCount = null
+    try {
+        const { data } = await axios.post(`${CUSTOMER_SERVICE_URL}/internal/booking-complete`, 
+            { userId: booking.userId }
+        )
+        bookingCount = data.bookingCount
     } catch (err) {
-        console.error("[Booking] Failed to set booking as complete:", err.message)
-        return null
+        console.error("[Booking] booking-complete call failed:", err.message)
     }
+
+    // Trigger discount unlock exactly when the user hits 3
+    if (bookingCount === 3) {
+        try {
+            await axios.post(`${PAYMENT_SERVICE_URL}/internal/unlock-discount`, 
+                { userId: booking.userId }
+            )
+        } catch (err) {
+            console.error("[Booking] unlock-discount call failed:", err.message)
+        }
+    }
+
+    return booking
 }
 
 // Connect to db
@@ -106,7 +130,7 @@ app.post("/internal/bookings/:id/confirm", authenticate, async (req, res) => {
         )
 
         if (!booking)
-            return res.status(404).json({ error: "Booking not found or not in PAYING state" })
+            return res.status(404).json({ error: "Booking not found or already payed" })
 
         // Task 6 - schedule the ride-ready notification 3 minutes from confirmation
         scheduleRideReadyNotification(booking)
@@ -118,7 +142,19 @@ app.post("/internal/bookings/:id/confirm", authenticate, async (req, res) => {
     }
 })
 
-// View current bookings 
+// Set a ride as completed
+app.post("/internal/bookings/:id/complete", authenticate, async (req, res) => {
+    try {
+        const booking = await setBookingComplete(req.params.id)
+        if (!booking) return res.status(404).json({ error: "Booking not found" })
+        res.json({ message: "Booking completed", booking })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({ error: "Server error" })
+    }
+})
+
+// View current bookings
 app.get("/bookings/current", authenticate, async (req, res) => {
     try {
         const bookings = await Booking.find({
@@ -133,7 +169,7 @@ app.get("/bookings/current", authenticate, async (req, res) => {
     }
 })
 
-// View past bookings (completed or cancelled)
+// View past bookings
 app.get("/bookings/past", authenticate, async (req, res) => {
     try {
         const bookings = await Booking.find({

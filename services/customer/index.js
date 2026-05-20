@@ -92,15 +92,94 @@ app.get("/account", authenticate, async (req, res) => {
     }
 })
 
-// Internal routes
-app.post("/internal/booking-complete", async (req, res) => {
-    // Temp
-    res.json({
-        bookingCount : 3
-    })
+// --- Notifications
 
-    // Get booking count
-    // if == 3 then send notif
+// List the user's notifications
+app.get("/notifications", authenticate, async (req, res) => {
+    try {
+        const notifications = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 })
+        res.json({ notifications })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({ error: "Server error" })
+    }
+})
+
+// Mark all notifications as read
+app.patch("/notifications/read-all", authenticate, async (req, res) => {
+    try {
+        const result = await Notification.updateMany(
+            { userId: req.user.id, read: false },
+            { $set: { read: true } }
+        )
+        res.json({ message: "All notifications marked as read", modified: result.modifiedCount })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({ error: "Server error" })
+    }
+})
+
+// Mark a notification as read
+app.patch("/notifications/:id/read", authenticate, async (req, res) => {
+    try {
+        const notification = await Notification.findOneAndUpdate(
+            { _id: req.params.id, userId: req.user.id },
+            { $set: { read: true } },
+            { new: true }
+        )
+
+        if (!notification) return res.status(404).json({ error: "Notification not found" })
+        res.json({ notification })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({ error: "Server error" })
+    }
+})
+
+// Internal routes
+
+// Add a notification to a user's inbox
+app.post("/internal/notifications", async (req, res) => {
+    try {
+        const { userId, type, title, message, meta } = req.body
+
+        if (!userId || !title || !message)
+            return res.status(400).json({ error: "userId, title and message are required" })
+
+        const notification = await Notification.create({
+            userId,
+            type: type || "GENERAL",
+            title,
+            message,
+            meta: meta || {},
+        })
+
+        res.status(201).json({ notification })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({ error: "Server error" })
+    }
+})
+
+// Increment the user's booking count
+app.post("/internal/booking-complete", async (req, res) => {
+    try {
+        const { userId } = req.body
+        if (!userId) return res.status(400).json({ error: "userId required" })
+
+        const user = await User.findByIdAndUpdate(
+            userId,
+            { $inc: { bookingCount: 1 } },
+            { new: true }
+        )
+
+        if (!user) return res.status(404).json({ error: "User not found" })
+
+        res.json({ bookingCount: user.bookingCount })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({ error: "Server error" })
+    }
 })
 
 app.listen(PORT, () => console.log(`[Customer] Service is running on port ${PORT}`))

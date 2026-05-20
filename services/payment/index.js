@@ -11,6 +11,7 @@ const { authenticate } = require('./middleware')
 const PORT = process.env.PORT || 3003
 const CUSTOMER_SERVICE_URL = process.env.CUSTOMER_SERVICE_URL
 const BOOKING_SERVICE_URL = process.env.BOOKING_SERVICE_URL
+const FARE_SERVICE_URL = process.env.FARE_SERVICE_URL
 
 const app = express()
 app.use(cors())
@@ -42,12 +43,28 @@ function getPassengersMultiplier(passengers) {
     return null
 }
 
-async function getCabFare() {
-    // send internal request
-    return 10
+async function getCabFare({ startLat, startLng, endLat, endLng } = {}) {
+    const FALLBACK = 10
+
+    if (startLat == null || startLng == null || endLat == null || endLng == null) return FALLBACK
+
+    try {
+        const { data } = await axios.get(`${FARE_SERVICE_URL}fare`, {
+            params: { startLat, startLng, endLat, endLng },
+            headers: { Authorization: `Bearer ${process.env.INTERNAL_TOKEN || ""}` },
+            timeout: 5000,
+        })
+
+        if (data?.fare === "number")
+            return data.fare
+        return FALLBACK
+    } catch (err) {
+        console.error("[Payment] Fare service call failed:", err.message)
+        return FALLBACK
+    }
 }
 
-async function computeMultipliers({ cabType, dateTime, passengers, startLocation, endLocation }) {
+async function computeMultipliers({ cabType, dateTime, passengers, startLat, startLng, endLat, endLng }) {
     const cabMultiplier = getCabMultiplier(cabType)
     if (cabMultiplier === null) return { error: "Invalid cab type" }
 
@@ -55,7 +72,7 @@ async function computeMultipliers({ cabType, dateTime, passengers, startLocation
     if (passengersMultiplier === null) return { error: "Maximum 8 passengers allowed" }
 
     const daytimeMultiplier = getDaytimeMultiplier(dateTime)
-    const baseFare = await getCabFare(startLocation, endLocation)
+    const baseFare = await getCabFare({ startLat, startLng, endLat, endLng })
 
     return { baseFare, cabMultiplier, daytimeMultiplier, passengersMultiplier }
 }
@@ -64,12 +81,19 @@ function calculateTotal({ baseFare, cabMultiplier, daytimeMultiplier, passengers
     return baseFare * cabMultiplier * daytimeMultiplier * passengersMultiplier * discountMultiplier
 }
 
+
 // Routes
 
 // Get a booking price quote
 app.post("/quote", authenticate, async (req, res) => {
     try {
-        const { cabType, dateTime, passengers, startLocation, endLocation } = req.body
+        const { 
+            cabType, 
+            dateTime, 
+            passengers, 
+            startLocation, 
+            endLocation 
+        } = req.body
 
         if (!cabType || !dateTime || !passengers || !startLocation || !endLocation)
             return res.status(400).json({ error: "cabType, dateTime, passengers, startLocation and endLocation are required" })
@@ -93,7 +117,13 @@ app.post("/quote", authenticate, async (req, res) => {
 // Pay for a booking
 app.post("/pay", authenticate, async (req, res) => {
     try {
-        const { cabType, dateTime, passengers, startLocation, endLocation } = req.body
+        const { 
+            cabType, 
+            dateTime, 
+            passengers, 
+            startLocation, 
+            endLocation 
+        } = req.body
 
         if (!cabType || !dateTime || !passengers || !startLocation || !endLocation)
             return res.status(400).json({ error: "cabType, dateTime, passengers, startLocation and endLocation are required" })
@@ -120,7 +150,7 @@ app.post("/pay", authenticate, async (req, res) => {
             return res.status(502).json({ error: "Could not create booking" })
         }
 
-        // Atomically claim discount if available
+        // Claim discount if available
         const discountRecord = await DiscountNotification.findOneAndUpdate(
             { userId: req.user.id, usedAt: null },
             { $set: { usedAt: new Date() } },
@@ -142,7 +172,7 @@ app.post("/pay", authenticate, async (req, res) => {
             discountApplied,
         })
 
-        // Change booking status to CONFIRMED
+        // Payment successfull so change booking status to CONFIRMED
         try {
             const { data } = await axios.post(
                 `${BOOKING_SERVICE_URL}internal/bookings/${booking._id}/confirm`,
@@ -161,7 +191,7 @@ app.post("/pay", authenticate, async (req, res) => {
     }
 })
 
-// Retrieve all the user's payments
+// Get all the user's payments
 app.get("/payments", authenticate, async (req, res) => {
     try {
         const payments = await Payment.find({ userId: req.user.id }).sort({ createdAt: -1 })
@@ -172,7 +202,7 @@ app.get("/payments", authenticate, async (req, res) => {
     }
 })
 
-// Retrieve payment details for a specific booking
+// Get payment details for a specific booking
 app.get("/payments/:bookingId", authenticate, async (req, res) => {
     try {
         const payment = await Payment.findOne({
@@ -182,6 +212,43 @@ app.get("/payments/:bookingId", authenticate, async (req, res) => {
 
         if (!payment) return res.status(404).json({ error: "Payment not found" })
         res.json({ payment })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({ error: "Server error" })
+    }
+})
+
+// Triggered by booking service when a user reaches 3 completed bookings
+app.post("/internal/unlock-discount", async (req, res) => {
+    try {
+        const { userId } = req.body
+        if (!userId) return res.status(400).json({ error: "userId required" })
+
+        let discount
+        try {
+            discount = await DiscountNotification.create({ userId })
+        } catch (err) {
+            if (err.code === 11000) return res.json({ message: "Discount already unlocked" })
+            throw err
+        }
+
+        // Notify the user that they have a discount
+        try {
+            await axios.post(`${CUSTOMER_SERVICE_URL}/internal/notifications`, {
+                userId,
+                type: "DISCOUNT",
+                title: "You've unlocked a discount!",
+                message: "Thanks for booking with us. Your next ride will be 15% off.",
+                meta: { 
+                    discountMultiplier: 0.85, 
+                    unlockedAt: discount.sentAt 
+                },
+            })
+        } catch (err) {
+            console.error("[Payment] Inbox push for discount failed:", err.message)
+        }
+
+        res.status(201).json({ message: "Discount unlocked", discountNotification: discount })
     } catch (err) {
         console.error(err)
         res.status(500).json({ error: "Server error" })
