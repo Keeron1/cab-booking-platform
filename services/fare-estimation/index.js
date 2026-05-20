@@ -13,26 +13,32 @@ app.use(express.json())
 
 async function getTaxiFare({ startLat, startLng, endLat, endLng }) {
     try {
-        const { data } = await axios.get(`${process.env.RAPID_API_FARE_HOST}/search-geo`, {
+        const { data } = await axios.get(`https://${process.env.RAPID_API_FARE_HOST}/search-geo`, {
             params: {
                 dep_lat: startLat,
                 dep_lng: startLng,
                 arr_lat: endLat,
-                arr_lng: endLng
+                arr_lng: endLng,
             },
             headers: {
                 "X-RapidAPI-Key": process.env.RAPID_API_KEY,
-                "X-RapidAPI-Host": new URL(process.env.RAPID_API_FARE_HOST).host,
+                "X-RapidAPI-Host": process.env.RAPID_API_FARE_HOST,
             },
         })
 
-        const price_in_cents = data?.journey?.fares?.[0].price_in_cents
-        if(price_in_cents){
-            return { error: "Failed to build response" }
-        }
+        const fares = data?.journey?.fares || []
+        let dayFare = fares.find(f => f?.name === "by Day")?.price_in_cents
+        let nightFare = fares.find(f => f?.name === "by Night")?.price_in_cents
+
+        // Check if fare estimation exists (not "n/a" or null)
+        dayFare = typeof(dayFare) === "number" ? dayFare : null
+        nightFare = typeof(nightFare) === "number" ? nightFare : null
 
         return {
-            price_in_cents = price_in_cents
+            dayFareCents: dayFare,
+            nightFareCents: nightFare,
+            distanceKm: data?.journey?.distance ?? null,
+            durationMin: data?.journey?.duration ?? null,
         }
     } catch (err) {
         console.error("[Fare] API error:", err.response?.data || err.message)

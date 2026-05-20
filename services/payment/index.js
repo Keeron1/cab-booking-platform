@@ -43,21 +43,28 @@ function getPassengersMultiplier(passengers) {
     return null
 }
 
-async function getCabFare({ startLat, startLng, endLat, endLng } = {}) {
+async function getCabFare({ dateTime, startLat, startLng, endLat, endLng } = {}) {
     const FALLBACK = 10
 
     if (startLat == null || startLng == null || endLat == null || endLng == null) return FALLBACK
 
     try {
-        const { data } = await axios.get(`${FARE_SERVICE_URL}fare`, {
+        const { data } = await axios.get(`${FARE_SERVICE_URL}internal/fare`, {
             params: { startLat, startLng, endLat, endLng },
-            headers: { Authorization: `Bearer ${process.env.INTERNAL_TOKEN || ""}` },
             timeout: 5000,
         })
 
-        if (data?.fare === "number")
-            return data.fare
-        return FALLBACK
+        const hour = new Date(dateTime).getHours()
+        const isNight = hour >= 0 && hour < 8
+
+        // Try to get the amount for the valid time but if not available check the other time before using fallback
+        const preferred = isNight ? data.nightFareCents : data.dayFareCents
+        const fallback = isNight ? data.dayFareCents : data.nightFareCents
+
+        const cents = preferred ?? fallback
+        if (cents == null) return FALLBACK
+
+        return cents / 100 // Convert from cents to proper format
     } catch (err) {
         console.error("[Payment] Fare service call failed:", err.message)
         return FALLBACK
@@ -72,7 +79,7 @@ async function computeMultipliers({ cabType, dateTime, passengers, startLat, sta
     if (passengersMultiplier === null) return { error: "Maximum 8 passengers allowed" }
 
     const daytimeMultiplier = getDaytimeMultiplier(dateTime)
-    const baseFare = await getCabFare({ startLat, startLng, endLat, endLng })
+    const baseFare = await getCabFare({ dateTime, startLat, startLng, endLat, endLng })
 
     return { baseFare, cabMultiplier, daytimeMultiplier, passengersMultiplier }
 }
