@@ -21,27 +21,26 @@ mongoose
 
 async function getWeatherForecast({ lat, lng, address }) {
     let q
-    if (lat != null && lng != null)
+
+    // Build query
+    if (lat != null && lng != null) // Checks if null or undefined (0 is a coord)
         q = `${lat},${lng}`
-    else if(q)
-        q = address
-    else 
-        return { error: "Failed to build query (lat and lng, or address are required)" }
+    else if(address) q = address // Try to use address instead
+    else return { error: "Failed to build query (lat and lng, or address are required)" }
 
     try {
-        const { data } = await axios.get(`${process.env.RAPID_API_FORECAST_HOST}/forecast.json`, {
+        const { data } = await axios.get(`https://${process.env.RAPID_API_FORECAST_HOST}/forecast.json`, {
             params: { q, days: 1 },
             headers: {
                 "X-RapidAPI-Key": process.env.RAPID_API_KEY,
-                "X-RapidAPI-Host": new URL(process.env.RAPID_API_FORECAST_HOST),
+                "X-RapidAPI-Host": process.env.RAPID_API_FORECAST_HOST,
             },
         })
 
-
         const weatherLocation = data.location
         const currentWeather = data.current
-        const forecastDay = data.forecast?.forecastday?.[0].day    
-        if(!forecastDay || !currentWeather || forecastDay){
+        const forecastDay = data.forecast?.forecastday?.[0]?.day    
+        if(!forecastDay || !currentWeather || !weatherLocation){
             return { error: "Failed to build response" }
         }
 
@@ -165,6 +164,8 @@ app.get("/locations/:id/weather", authenticate, async (req, res) => {
             lng: location.lng,
             address: location.address,
         })
+        if(forecast.error) return res.status(502).json({ error: forecast.error })
+
         res.json({ location, forecast })
     } catch (err) {
         console.error(err)
