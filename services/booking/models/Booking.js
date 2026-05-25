@@ -2,8 +2,16 @@ const mongoose = require("mongoose")
 
 const bookingSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, required: true },
-    startLocation: { type: String, required: true },
-    endLocation: { type: String, required: true },
+    startLocation: {
+        address: { type: String },
+        lat: { type: Number },
+        lng: { type: Number },
+    },
+    endLocation: {
+        address: { type: String },
+        lat: { type: Number },
+        lng: { type: Number },
+    },
     bookingTime: { type: Date, required: true },
     passengers: { type: Number, required: true, min: 1, max: 8 }, // payment service accepts upto 8
     cabType: { type: String, enum: ["Economic", "Premium", "Executive"], required: true },

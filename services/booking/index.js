@@ -92,8 +92,11 @@ app.post("/internal/booking", authenticate, async (req, res) => {
             cabType
         } = req.body
 
-        if (!startLocation || !endLocation || !dateTime || !passengers || !cabType)
-            return res.status(400).json({ error: "All booking fields are required" })
+        const hasStartLocation = startLocation?.address || (startLocation?.lat != null && startLocation?.lng != null)
+        const hasEndLocation = endLocation?.address || (endLocation?.lat != null && endLocation?.lng != null)
+
+        if (!hasStartLocation || !hasEndLocation || !dateTime || !passengers || !cabType)
+            return res.status(400).json({ error: "All booking fields are required. Locations need an address or lat and lng." })
 
         if (passengers > 8)
             return res.status(400).json({ error: "Maximum 8 passengers allowed" })
@@ -119,9 +122,11 @@ app.post("/internal/booking", authenticate, async (req, res) => {
 // Confirm a booking once payment succeeds (called by payment service)
 app.post("/internal/bookings/:id/confirm", authenticate, async (req, res) => {
     try {
+        const { estimatedFare, totalPrice } = req.body
+
         const booking = await Booking.findOneAndUpdate(
             { _id: req.params.id, status: "PAYING" },
-            { $set: { status: "CONFIRMED" } },
+            { $set: { status: "CONFIRMED", estimatedFare, totalPrice } },
             { new: true }
         )
 

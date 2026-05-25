@@ -71,7 +71,7 @@ async function getCabFare({ dateTime, startLat, startLng, endLat, endLng } = {})
     if (startLat == null || startLng == null || endLat == null || endLng == null) return FALLBACK
 
     try {
-        const { data } = await axios.get(`${FARE_SERVICE_URL}internal/fare`, {
+        const { data } = await axios.get(`${FARE_SERVICE_URL}/internal/fare`, {
             params: { startLat, startLng, endLat, endLng },
             timeout: 5000,
         })
@@ -84,7 +84,10 @@ async function getCabFare({ dateTime, startLat, startLng, endLat, endLng } = {})
         const fallback = isNight ? data.dayFareCents : data.nightFareCents
 
         const cents = preferred ?? fallback
-        if (cents == null) return FALLBACK
+        if (cents == null) {
+            console.error("[Payment] Using Fallback amount", err.message)
+            return FALLBACK
+        }
 
         return cents / 100 // Convert from cents to proper format
     } catch (err) {
@@ -124,10 +127,17 @@ app.post("/quote", authenticate, async (req, res) => {
             endLocation 
         } = req.body
 
-        if (!cabType || !dateTime || !passengers || !startLocation || !endLocation)
-            return res.status(400).json({ error: "cabType, dateTime, passengers, startLocation and endLocation are required" })
+        const hasStartLocation = startLocation?.address || (startLocation?.lat != null && startLocation?.lng != null)
+        const hasEndLocation = endLocation?.address || (endLocation?.lat != null && endLocation?.lng != null)
 
-        const multipliers = await computeMultipliers({ cabType, dateTime, passengers, startLocation, endLocation })
+        if (!cabType || !dateTime || !passengers || !hasStartLocation || !hasEndLocation)
+            return res.status(400).json({ error: "cabType, dateTime, passengers, startLocation and endLocation are required. Locations need an address or lat and lng." })
+
+        const multipliers = await computeMultipliers({
+            cabType, dateTime, passengers,
+            startLat: startLocation.lat, startLng: startLocation.lng,
+            endLat: endLocation.lat, endLng: endLocation.lng,
+        })
         if (multipliers.error) return res.status(400).json({ error: multipliers.error })
 
         const discountAvailable = !!(await DiscountNotification.findOne({ userId: req.user.id, usedAt: null }))
@@ -154,17 +164,24 @@ app.post("/pay", authenticate, async (req, res) => {
             endLocation 
         } = req.body
 
-        if (!cabType || !dateTime || !passengers || !startLocation || !endLocation)
-            return res.status(400).json({ error: "cabType, dateTime, passengers, startLocation and endLocation are required" })
+        const hasStartLocation = startLocation?.address || (startLocation?.lat != null && startLocation?.lng != null)
+        const hasEndLocation = endLocation?.address || (endLocation?.lat != null && endLocation?.lng != null)
 
-        const multipliers = await computeMultipliers({ cabType, dateTime, passengers, startLocation, endLocation })
+        if (!cabType || !dateTime || !passengers || !hasStartLocation || !hasEndLocation)
+            return res.status(400).json({ error: "cabType, dateTime, passengers, startLocation and endLocation are required. Locations need an address or lat and lng." })
+
+        const multipliers = await computeMultipliers({
+            cabType, dateTime, passengers,
+            startLat: startLocation.lat, startLng: startLocation.lng,
+            endLat: endLocation.lat, endLng: endLocation.lng,
+        })
         if (multipliers.error) return res.status(400).json({ error: multipliers.error })
 
         // Request to create the booking so we can store its id in the payment record
         let booking
         try {
             const { data } = await axios.post(
-                `${BOOKING_SERVICE_URL}internal/booking`,
+                `${BOOKING_SERVICE_URL}/internal/booking`,
                 { startLocation, endLocation, dateTime, passengers, cabType },
                 { headers: { Authorization: req.headers["authorization"] } }
             )
@@ -196,6 +213,7 @@ app.post("/pay", authenticate, async (req, res) => {
             baseFare: multipliers.baseFare,
             cabMultiplier: multipliers.cabMultiplier,
             daytimeMultiplier: multipliers.daytimeMultiplier,
+            passengersMultiplier: multipliers.passengersMultiplier,
             discountMultiplier: discountMultiplier,
             totalPrice,
             discountApplied,
@@ -204,8 +222,8 @@ app.post("/pay", authenticate, async (req, res) => {
         // Payment successfull so change booking status to CONFIRMED
         try {
             const { data } = await axios.post(
-                `${BOOKING_SERVICE_URL}internal/bookings/${booking._id}/confirm`,
-                {},
+                `${BOOKING_SERVICE_URL}/internal/bookings/${booking._id}/confirm`,
+                { estimatedFare: multipliers.baseFare, totalPrice },
                 { headers: { Authorization: req.headers["authorization"] } }
             )
             booking = data.booking

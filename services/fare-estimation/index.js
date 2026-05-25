@@ -3,8 +3,6 @@ const express = require("express")
 const cors = require("cors")
 const axios = require("axios")
 
-const { authenticate } = require("./middleware")
-
 const PORT = process.env.PORT || 3004
 
 const app = express()
@@ -47,7 +45,7 @@ async function getTaxiFare({ startLat, startLng, endLat, endLng }) {
 }
 
 // Get a taxi fare estimate
-app.get("/internal/fare", authenticate, async (req, res) => {
+app.get("/internal/fare", async (req, res) => {
     try {
         const { startLat, startLng, endLat, endLng } = req.query
 
