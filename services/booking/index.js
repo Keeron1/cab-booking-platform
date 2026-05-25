@@ -4,6 +4,7 @@ const cors = require("cors")
 const mongoose = require("mongoose")
 const jwt = require("jsonwebtoken")
 const axios = require("axios")
+const EventEmitter = require("events")
 
 const { Booking } = require("./models/index");
 const { authenticate } = require('./middleware')
@@ -16,13 +17,14 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
-async function scheduleRideReadyNotification(booking) {
-    // Set booking status to DRIVER_ASSIGNED
+const bookingEvents = new EventEmitter()
+
+// When a booking is confirmed, assign a driver and notify the user after 3 minutes
+bookingEvents.on("booking:confirmed", async (booking) => {
     await Booking.findByIdAndUpdate(booking._id, { status: "DRIVER_ASSIGNED" })
 
     setTimeout(async () => {
         try {
-            // Push the ride-ready notification to the user's inbox
             await axios.post(`${CUSTOMER_SERVICE_URL}/internal/notifications`, {
                 userId: booking.userId,
                 type: "RIDE_READY",
@@ -39,43 +41,37 @@ async function scheduleRideReadyNotification(booking) {
             })
 
             await Booking.findByIdAndUpdate(booking._id, { status: "IN_PROGRESS" })
+            console.log(`[Booking] Ride ready notification sent for booking ${booking._id}`)
         } catch (err) {
-            console.error("[Booking] Failed to send ride-ready notification:", err.message)
+            console.error("[Booking] Failed to send ride ready notification:", err.message)
         }
-    }, 3 * 60 * 1000); // 3 minutes
-}
+    }, 3 * 60 * 1000) // 3 minutes
+})
 
-async function setBookingComplete(bookingId) {
-    const booking = await Booking.findOneAndUpdate(
-        { _id: bookingId, status: { $in: ["IN_PROGRESS", "DRIVER_ASSIGNED", "CONFIRMED"] } },
-        { $set: { status: "COMPLETED" } },
-        { new: true }
-    )
-    if (!booking) return null
-
+// When a booking is completed, increment count and check for discount eligibility
+bookingEvents.on("booking:completed", async (booking) => {
     let bookingCount = null
     try {
-        const { data } = await axios.post(`${CUSTOMER_SERVICE_URL}/internal/booking-complete`, 
+        const { data } = await axios.post(`${CUSTOMER_SERVICE_URL}/internal/booking-complete`,
             { userId: booking.userId }
         )
         bookingCount = data.bookingCount
     } catch (err) {
-        console.error("[Booking] booking-complete call failed:", err.message)
+        console.error("[Booking] booking complete call failed:", err.message)
     }
 
     // Trigger discount unlock exactly when the user hits 3
     if (bookingCount === 3) {
         try {
-            await axios.post(`${PAYMENT_SERVICE_URL}/internal/unlock-discount`, 
+            await axios.post(`${PAYMENT_SERVICE_URL}/internal/unlock-discount`,
                 { userId: booking.userId }
             )
+            console.log(`[Booking] Discount unlock triggered for user ${booking.userId}`)
         } catch (err) {
-            console.error("[Booking] unlock-discount call failed:", err.message)
+            console.error("[Booking] unlock discount call failed:", err.message)
         }
     }
-
-    return booking
-}
+})
 
 // Connect to db
 mongoose
@@ -132,8 +128,8 @@ app.post("/internal/bookings/:id/confirm", authenticate, async (req, res) => {
         if (!booking)
             return res.status(404).json({ error: "Booking not found or already payed" })
 
-        // Task 6 - schedule the ride-ready notification 3 minutes from confirmation
-        scheduleRideReadyNotification(booking)
+        // Trigger event to schedule ride ready notification
+        bookingEvents.emit("booking:confirmed", booking)
 
         res.json({ message: "Booking confirmed", booking })
     } catch (err) {
@@ -145,8 +141,16 @@ app.post("/internal/bookings/:id/confirm", authenticate, async (req, res) => {
 // Set a ride as completed
 app.post("/internal/bookings/:id/complete", authenticate, async (req, res) => {
     try {
-        const booking = await setBookingComplete(req.params.id)
+        const booking = await Booking.findOneAndUpdate(
+            { _id: req.params.id, status: { $in: ["IN_PROGRESS", "DRIVER_ASSIGNED", "CONFIRMED"] } },
+            { $set: { status: "COMPLETED" } },
+            { new: true }
+        )
         if (!booking) return res.status(404).json({ error: "Booking not found" })
+
+        // Trigger event to check discount eligibility
+        bookingEvents.emit("booking:completed", booking)
+
         res.json({ message: "Booking completed", booking })
     } catch (err) {
         console.error(err)

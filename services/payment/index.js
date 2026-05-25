@@ -4,6 +4,7 @@ const cors = require("cors")
 const mongoose = require("mongoose")
 const jwt = require("jsonwebtoken")
 const axios = require("axios")
+const EventEmitter = require("events")
 
 const { Payment, DiscountNotification } = require("./models/index");
 const { authenticate } = require('./middleware')
@@ -16,6 +17,27 @@ const FARE_SERVICE_URL = process.env.FARE_SERVICE_URL
 const app = express()
 app.use(cors())
 app.use(express.json())
+
+const paymentEvents = new EventEmitter()
+
+// When a discount is unlocked, notify the user about it
+paymentEvents.on("discount:unlocked", async ({ userId, discount }) => {
+    try {
+        await axios.post(`${CUSTOMER_SERVICE_URL}/internal/notifications`, {
+            userId,
+            type: "DISCOUNT",
+            title: "You've unlocked a discount!",
+            message: "Thanks for booking with us. Your next ride will be 15% off.",
+            meta: {
+                discountMultiplier: 0.85,
+                unlockedAt: discount.sentAt
+            },
+        })
+        console.log(`[Payment] Discount notification sent to user ${userId}`)
+    } catch (err) {
+        console.error(`[Payment] Failed to send discount notifcation to ${userId}: ${err.message}`)
+    }
+})
 
 // Connect to db
 mongoose
@@ -239,21 +261,8 @@ app.post("/internal/unlock-discount", async (req, res) => {
             throw err
         }
 
-        // Notify the user that they have a discount
-        try {
-            await axios.post(`${CUSTOMER_SERVICE_URL}/internal/notifications`, {
-                userId,
-                type: "DISCOUNT",
-                title: "You've unlocked a discount!",
-                message: "Thanks for booking with us. Your next ride will be 15% off.",
-                meta: { 
-                    discountMultiplier: 0.85, 
-                    unlockedAt: discount.sentAt 
-                },
-            })
-        } catch (err) {
-            console.error("[Payment] Inbox push for discount failed:", err.message)
-        }
+        // Trigger event to notify the user about their discount
+        paymentEvents.emit("discount:unlocked", { userId, discount })
 
         res.status(201).json({ message: "Discount unlocked", discountNotification: discount })
     } catch (err) {
