@@ -53,7 +53,7 @@ function getCabMultiplier(cabType) {
 }
 
 function getDaytimeMultiplier(dateTime) {
-    const hour = new Date(dateTime).getHours()
+    const hour = new Date(dateTime).getUTCHours()
     // Between 12:00 AM and 8:00 AM: 1.2  Else 1
     if (hour >= 0 && hour < 8) return 1.2
     return 1
@@ -76,7 +76,7 @@ async function getCabFare({ dateTime, startLat, startLng, endLat, endLng } = {})
             timeout: 5000,
         })
 
-        const hour = new Date(dateTime).getHours()
+        const hour = new Date(dateTime).getUTCHours()
         const isNight = hour >= 0 && hour < 8
 
         // Try to get the amount for the valid time but if not available check the other time before using fallback
