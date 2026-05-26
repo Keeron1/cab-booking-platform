@@ -1,6 +1,10 @@
 async function loadNotifications() {
     try {
         const res = await fetch(`${API}/notifications`, { headers: authHeaders() })
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(`${res.status}: ${text}`)
+        }
         const data = await res.json()
         const el = document.getElementById('notifications')
         const badge = document.getElementById('notifBadge')
@@ -22,8 +26,9 @@ async function loadNotifications() {
                 </div>
             </div>
         `).join('')
-    } catch {
-        document.getElementById('notifications').innerHTML = '<p class="text-danger">Failed to load.</p>'
+    } catch (err) {
+        console.error('Notifications error:', err)
+        document.getElementById('notifications').innerHTML = `<p class="text-danger">Failed to load: ${err.message}</p>`
     }
 }
 
