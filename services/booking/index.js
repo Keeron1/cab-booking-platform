@@ -144,7 +144,7 @@ app.post("/internal/bookings/:id/confirm", authenticate, async (req, res) => {
 })
 
 // Set a ride as completed
-app.post("/internal/bookings/:id/complete", authenticate, async (req, res) => {
+app.post("/bookings/:id/complete", authenticate, async (req, res) => {
     try {
         const booking = await Booking.findOneAndUpdate(
             { _id: req.params.id, status: { $in: ["IN_PROGRESS", "DRIVER_ASSIGNED", "CONFIRMED"] } },

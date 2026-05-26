@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CabBook - Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .tab-content { padding-top: 20px; }
+        .booking-card { margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container">
+            <span class="navbar-brand">🚕 CabBook</span>
+            <div class="d-flex align-items-center gap-3">
+                <span class="text-white" id="navUsername"></span>
+                <button class="btn btn-outline-light btn-sm" onclick="logout()">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <ul class="nav nav-tabs" id="dashTabs">
+            <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#bookTab" onclick="loadLocationPicker()">Book a Ride</a></li>
+            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#currentTab" onclick="loadCurrentBookings()">Current Bookings</a></li>
+            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#pastTab" onclick="loadPastBookings()">Past Bookings</a></li>
+            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#notifTab" onclick="loadNotifications()">
+                Notifications <span id="notifBadge" class="badge bg-danger d-none"></span>
+            </a></li>
+            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#locTab" onclick="loadLocations()">Locations</a></li>
+            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#payTab" onclick="loadPayments()">Payments</a></li>
+        </ul>
+
+        <div class="tab-content">
+
+            <!-- Book a Ride -->
+            <div class="tab-pane fade show active" id="bookTab">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card shadow-sm">
+                            <div class="card-body">
+                                <h5 class="card-title">New Booking</h5>
+                                <div id="bookAlert"></div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Cab Type</label>
+                                    <select class="form-select" id="cabType">
+                                        <option value="Economic">Economic</option>
+                                        <option value="Premium">Premium</option>
+                                        <option value="Executive">Executive</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Date & Time</label>
+                                    <input type="datetime-local" class="form-control" id="dateTime">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Passengers</label>
+                                    <input type="number" class="form-control" id="passengers" min="1" max="8" value="1">
+                                </div>
+
+                                <hr>
+                                <p class="text-muted small mb-1">Start Location</p>
+                                <div class="mb-2">
+                                    <select class="form-select mb-1" id="startLocationPicker" onchange="onStartLocationPicked()">
+                                        <option value="">-- Select a saved location --</option>
+                                    </select>
+                                    <input type="text" class="form-control mb-1" id="startAddress" placeholder="Or type an address (e.g. Valletta)">
+                                    <div class="row g-1">
+                                        <div class="col"><input type="number" class="form-control" id="startLat" placeholder="Lat" step="any"></div>
+                                        <div class="col"><input type="number" class="form-control" id="startLng" placeholder="Lng" step="any"></div>
+                                    </div>
+                                </div>
+
+                                <p class="text-muted small mb-1">End Location</p>
+                                <div class="mb-3">
+                                    <input type="text" class="form-control mb-1" id="endAddress" placeholder="Address (e.g. Sliema)">
+                                    <div class="row g-1">
+                                        <div class="col"><input type="number" class="form-control" id="endLat" placeholder="Lat" step="any"></div>
+                                        <div class="col"><input type="number" class="form-control" id="endLng" placeholder="Lng" step="any"></div>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-outline-primary" onclick="getQuote()">Get Quote</button>
+                                    <button class="btn btn-success" id="payBtn" onclick="pay()" disabled>Confirm & Pay</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="card shadow-sm d-none" id="quoteCard">
+                            <div class="card-body">
+                                <h5 class="card-title">Price Quote</h5>
+                                <table class="table table-sm">
+                                    <tbody id="quoteTable"></tbody>
+                                </table>
+                                <h5 class="text-success" id="quoteTotal"></h5>
+                                <p class="text-muted small" id="discountNote"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Bookings -->
+            <div class="tab-pane fade" id="currentTab">
+                <h5>Current Bookings</h5>
+                <div id="currentBookings"><p class="text-muted">Loading...</p></div>
+            </div>
+
+            <!-- Past Bookings -->
+            <div class="tab-pane fade" id="pastTab">
+                <h5>Past Bookings</h5>
+                <div id="pastBookings"><p class="text-muted">Loading...</p></div>
+            </div>
+
+            <!-- Notifications -->
+            <div class="tab-pane fade" id="notifTab">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Notifications</h5>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="markAllRead()">Mark all as read</button>
+                </div>
+                <div id="notifications"><p class="text-muted">Loading...</p></div>
+            </div>
+
+            <!-- Locations -->
+            <div class="tab-pane fade" id="locTab">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card shadow-sm mb-3">
+                            <div class="card-body">
+                                <h6>Add Location</h6>
+                                <div id="locAlert"></div>
+                                <div class="mb-2">
+                                    <input type="text" class="form-control" id="locLabel" placeholder="Label (e.g. Home)">
+                                </div>
+                                <div class="mb-2">
+                                    <input type="text" class="form-control" id="locAddress" placeholder="Address">
+                                </div>
+                                <div class="row g-1 mb-2">
+                                    <div class="col"><input type="number" class="form-control" id="locLat" placeholder="Lat" step="any"></div>
+                                    <div class="col"><input type="number" class="form-control" id="locLng" placeholder="Lng" step="any"></div>
+                                </div>
+                                <button class="btn btn-primary w-100" onclick="addLocation()">Add</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <h5>Saved Locations</h5>
+                        <div id="locationsList"><p class="text-muted">Loading...</p></div>
+                    </div>
+                </div>
+
+                <div class="modal fade" id="weatherModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Weather Forecast</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body" id="weatherBody">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payments -->
+            <div class="tab-pane fade" id="payTab">
+                <h5>Payment History</h5>
+                <div id="paymentsList"><p class="text-muted">Loading...</p></div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/bookings.js"></script>
+    <script src="js/notifications.js"></script>
+    <script src="js/locations.js"></script>
+    <script src="js/payments.js"></script>
+    <script>
+        const user = JSON.parse(localStorage.getItem('user') || '{}')
+        if (!localStorage.getItem('token')) window.location.href = 'index.html'
+        document.getElementById('navUsername').textContent = `${user.firstName} ${user.lastName}`
+        function logout() { localStorage.clear(); window.location.href = 'index.html' }
+        loadLocationPicker()
+    </script>
+</body>
+</html>
