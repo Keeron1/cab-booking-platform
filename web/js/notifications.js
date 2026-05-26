@@ -1,6 +1,6 @@
 async function loadNotifications() {
     try {
-        const res = await fetch(`${API}/notifications`, { headers: authHeaders() })
+        const res = await fetch(`${API}/notifications`, { headers: authHeaders(), cache: 'no-store' })
         if (!res.ok) {
             const text = await res.text()
             throw new Error(`${res.status}: ${text}`)

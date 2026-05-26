@@ -1,6 +1,6 @@
 async function loadLocations() {
     try {
-        const res = await fetch(`${API}/locations`, { headers: authHeaders() })
+        const res = await fetch(`${API}/locations`, { headers: authHeaders(), cache: 'no-store' })
         const data = await res.json()
         const el = document.getElementById('locationsList')
         if (!data.locations.length) return el.innerHTML = '<p class="text-muted">No saved locations.</p>'

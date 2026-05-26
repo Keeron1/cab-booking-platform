@@ -115,7 +115,7 @@ async function pay() {
 
 async function loadCurrentBookings() {
     try {
-        const res = await fetch(`${API}/bookings/current`, { headers: authHeaders() })
+        const res = await fetch(`${API}/bookings/current`, { headers: authHeaders(), cache: 'no-store' })
         const data = await res.json()
         const el = document.getElementById('currentBookings')
         if (!data.bookings.length) return el.innerHTML = '<p class="text-muted">No current bookings.</p>'
@@ -160,7 +160,7 @@ async function completeRide(id) {
 
 async function loadPastBookings() {
     try {
-        const res = await fetch(`${API}/bookings/past`, { headers: authHeaders() })
+        const res = await fetch(`${API}/bookings/past`, { headers: authHeaders(), cache: 'no-store' })
         const data = await res.json()
         const el = document.getElementById('pastBookings')
         if (!data.bookings.length) return el.innerHTML = '<p class="text-muted">No past bookings.</p>'

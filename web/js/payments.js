@@ -1,6 +1,6 @@
 async function loadPayments() {
     try {
-        const res = await fetch(`${API}/payments`, { headers: authHeaders() })
+        const res = await fetch(`${API}/payments`, { headers: authHeaders(), cache: 'no-store' })
         const data = await res.json()
         const el = document.getElementById('paymentsList')
         if (!data.payments.length) return el.innerHTML = '<p class="text-muted">No payments yet.</p>'
